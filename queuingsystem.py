@@ -1,12 +1,18 @@
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env from the project root
 
 app = Flask(__name__)
 CORS(app)
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
-USERS = {"admin": "password123"}
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password123")
+USERS = {ADMIN_USERNAME: ADMIN_PASSWORD}
 
 # ── Application State ─────────────────────────────────────────────────────────
 offices_data = {
