@@ -16,9 +16,9 @@ USERS = {ADMIN_USERNAME: ADMIN_PASSWORD}
 
 # ── Application State ─────────────────────────────────────────────────────────
 offices_data = {
-    'Cashier':    {'current': 'C001', 'served': 0, 'prefix': 'C', 'priority': 0},
-    'Registrar':  {'current': 'R001', 'served': 0, 'prefix': 'R', 'priority': 0},
-    'Accounting': {'current': 'A001', 'served': 0, 'prefix': 'A', 'priority': 0},
+    'Cashier':    {'current': 'C001', 'served': 0, 'prefix': 'C', 'priority': 0, 'recall_count': 0},
+    'Registrar':  {'current': 'R001', 'served': 0, 'prefix': 'R', 'priority': 0, 'recall_count': 0},
+    'Accounting': {'current': 'A001', 'served': 0, 'prefix': 'A', 'priority': 0, 'recall_count': 0},
 }
 HISTORY = []
 
@@ -838,10 +838,12 @@ ADMIN_HTML = """<!DOCTYPE html>
       if(d.success){
         updateUI(d.state,d.served);
         showToast(d.message,action==='reset'?'warning':'success');
-        if(action==='next'||action==='priority'){
+        if(action==='next'||action==='priority'||action==='recall'){
           playDing();
           const ticket=office?d.state[office]:'';
-          setTimeout(()=>speak(buildAnnouncement(action,office,ticket)),680);
+          if(ticket&&ticket!=='----'){
+            setTimeout(()=>speak(buildAnnouncement(action,office,ticket)),680);
+          }
         }
         loadHistory();
       }else showToast(d.message||'Error.','error');
@@ -1241,23 +1243,92 @@ MONITOR_HTML = """<!DOCTYPE html>
     document.getElementById('mFootTime').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
   }
   clock();setInterval(clock,1000);
+
+  /* ── Web Speech (monitor) ──────────────────────────────────────────────── */
+  function ticketForSpeech(t){return t?t.split('').join(' '):''}
+  function buildAnnouncement(action,office,ticket){
+    const t=ticketForSpeech(ticket);
+    if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
+    return`Number ${t}. Please proceed to the ${office} window.`;
+  }
+  function speak(text){
+    if(!window.speechSynthesis)return;
+    window.speechSynthesis.cancel();
+    const utt=new SpeechSynthesisUtterance(text);
+    utt.lang='en-US';utt.rate=0.88;utt.pitch=1.0;utt.volume=1.0;
+    function doSpeak(){
+      const voices=window.speechSynthesis.getVoices();
+      const pick=voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
+                ||voices.find(v=>/en/i.test(v.lang));
+      if(pick)utt.voice=pick;
+      window.speechSynthesis.speak(utt);
+    }
+    if(window.speechSynthesis.getVoices().length){doSpeak();}
+    else{window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});}
+  }
+  function playDing(){
+    try{
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      function tone(freq,start,dur,vol){
+        const osc=ctx.createOscillator(),g=ctx.createGain();
+        osc.connect(g);g.connect(ctx.destination);
+        osc.type='sine';osc.frequency.value=freq;
+        g.gain.setValueAtTime(0,ctx.currentTime+start);
+        g.gain.linearRampToValueAtTime(vol,ctx.currentTime+start+0.025);
+        g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+start+dur);
+        osc.start(ctx.currentTime+start);
+        osc.stop(ctx.currentTime+start+dur+0.05);
+      }
+      tone(880,0,1.4,0.55);
+      tone(659,0.42,1.6,0.50);
+      setTimeout(()=>ctx.close(),2800);
+    }catch(e){}
+  }
+
+  /* ── Polling ──────────────────────────────────────────────────────────── */
+  let lastRecallCount=-1;
+  const OFFICE='{{ office }}';
+
   async function poll(){
     try{
       const r=await fetch('/api/monitor/'+SLUG);const d=await r.json();
       if(!d.success)return;
       const cEl=document.getElementById('mCurrent');
       const nEl=document.getElementById('mNext');
+
+      /* ticket changed → announce new number */
       if(cEl.textContent!==d.current){
         cEl.textContent=d.current||'----';
         cEl.classList.remove('flip');void cEl.offsetWidth;cEl.classList.add('flip');
+        if(d.current&&d.current!=='----'){
+          playDing();
+          const action=d.current.startsWith('P')?'priority':'next';
+          setTimeout(()=>speak(buildAnnouncement(action,OFFICE,d.current)),680);
+        }
       }
       if(nEl.textContent!==d.next){
         nEl.textContent=d.next||'----';
         nEl.classList.remove('flip');void nEl.offsetWidth;nEl.classList.add('flip');
       }
+
+      /* recall_count changed → re-announce current ticket */
+      const rc=d.recall_count||0;
+      if(lastRecallCount===-1){
+        /* first poll – just initialise, don't speak */
+        lastRecallCount=rc;
+      } else if(rc>lastRecallCount){
+        lastRecallCount=rc;
+        const cur=cEl.textContent;
+        if(cur&&cur!=='----'){
+          playDing();
+          const action=cur.startsWith('P')?'priority':'next';
+          setTimeout(()=>speak(buildAnnouncement(action,OFFICE,cur)),680);
+        }
+      }
     }catch{}
   }
   setInterval(poll,2000);
+  poll(); /* run immediately on page load so we hear the current number */
 </script>
 </body>
 </html>"""
@@ -1322,7 +1393,8 @@ def api_monitor(slug):
         office=office,
         current=od['current'],
         next=next_ticket(office),
-        served=od['served']
+        served=od['served'],
+        recall_count=od.get('recall_count', 0)
     )
 
 @app.route('/api/history')
@@ -1356,6 +1428,7 @@ def api_recall():
     if office not in offices_data:
         return jsonify(success=False, message='Invalid office.'), 400
     od = offices_data[office]
+    od['recall_count'] = od.get('recall_count', 0) + 1
     push_history('recall', office, od['current'])
     msg = (f"Recalling {od['current']} at {office}."
            if od['current'] != '----'
@@ -1402,7 +1475,7 @@ def api_add_office():
                 prefix = ch
                 break
     offices_data[name] = {'current': prefix + '001', 'served': 0,
-                          'prefix': prefix, 'priority': 0}
+                          'prefix': prefix, 'priority': 0, 'recall_count': 0}
     return jsonify(success=True,
                    message=f"Office '{name}' added successfully.",
                    state=snapshot(), served=served_map(),
