@@ -232,7 +232,7 @@ loginBtn.addEventListener('click',async()=>{
       body:JSON.stringify({username:u,password:p})});
     const d=await r.json();
     if(r.ok){showMsg('Access granted. Redirecting…','success');
-      setTimeout(()=>{location.href='/admin'},1000)}
+      setTimeout(()=>{location.href=d.redirect||'/admin'},1000)}
     else{loginBtn.disabled=false;loginBtn.textContent='Sign In';
       showMsg(d.message||'Authentication failed.','error')}
   }catch{loginBtn.disabled=false;loginBtn.textContent='Sign In';showMsg('Connection error.','error')}
@@ -2090,9 +2090,17 @@ def api_operator_login():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
-    u, p = data.get('username', ''), data.get('password', '')
+    u = data.get('username', '').strip()
+    p = data.get('password', '').strip()
+    # Admin credentials
     if u in USERS and USERS[u] == p:
-        return jsonify(success=True, message='Login successful!')
+        return jsonify(success=True, message='Login successful!', redirect='/admin')
+    # Operator credentials
+    for office, creds in OPERATOR_CREDS.items():
+        if u == creds['username'] and p == creds['password']:
+            slug = office.lower().replace(' ', '-')
+            session['op_' + slug] = True
+            return jsonify(success=True, message='Login successful!', redirect='/' + slug)
     return jsonify(success=False, message='Invalid credentials.'), 401
 
 @app.route('/api/state')
