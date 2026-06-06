@@ -16,9 +16,8 @@ USERS = {ADMIN_USERNAME: ADMIN_PASSWORD}
 
 # ── Application State ─────────────────────────────────────────────────────────
 offices_data = {
-    'Cashier':    {'current': 'C001', 'served': 0, 'prefix': 'C', 'priority': 0, 'recall_count': 0},
-    'Registrar':  {'current': 'R001', 'served': 0, 'prefix': 'R', 'priority': 0, 'recall_count': 0},
-    'Accounting': {'current': 'A001', 'served': 0, 'prefix': 'A', 'priority': 0, 'recall_count': 0},
+    'Cashier':   {'current': 'C001', 'served': 0, 'prefix': 'C', 'priority': 0, 'recall_count': 0},
+    'Registrar': {'current': 'R001', 'served': 0, 'prefix': 'R', 'priority': 0, 'recall_count': 0},
 }
 HISTORY = []
 
@@ -54,9 +53,8 @@ def next_ticket(office_name):
         return prefix + '001'
 
 OFFICE_SLUGS = {
-    'cashier':    'Cashier',
-    'registrar':  'Registrar',
-    'accounting': 'Accounting',
+    'cashier':   'Cashier',
+    'registrar': 'Registrar',
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
