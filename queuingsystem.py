@@ -40,6 +40,9 @@ def snapshot():
 def served_map():
     return {k: v['served'] for k, v in offices_data.items()}
 
+def recall_map():
+    return {k: v.get('recall_count', 0) for k, v in offices_data.items()}
+
 def next_ticket(office_name):
     od = offices_data.get(office_name)
     if not od:
@@ -736,7 +739,7 @@ ADMIN_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,office,ticket){
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
-    if(action==='recall')return`Recalling for number ${t}, please proceed to the ${office.toLowerCase()} office.`;
+    if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${office} window.`;
   }
 
@@ -849,6 +852,14 @@ ADMIN_HTML = """<!DOCTYPE html>
     }).join('');
   }
 
+  function announceRecall(office){
+    const el=document.getElementById('tnum-'+sid(office));
+    const ticket=el?el.textContent.trim():'';
+    if(!ticket||ticket==='----'||!soundOn)return;
+    playDing();
+    setTimeout(()=>speak(buildAnnouncement('recall',office,ticket)),680);
+  }
+
   /* API */
   async function api(action,office=null,extra={}){
     const body=office?{office,...extra}:extra;
@@ -859,7 +870,7 @@ ADMIN_HTML = """<!DOCTYPE html>
       if(d.success){
         updateUI(d.state,d.served);
         showToast(d.message,action==='reset'?'warning':'success');
-        if(action==='next'||action==='priority'||action==='recall'){
+        if(action==='next'||action==='priority'){
           playDing();
           const ticket=office?d.state[office]:'';
           if(ticket&&ticket!=='----'){
@@ -879,7 +890,9 @@ ADMIN_HTML = """<!DOCTYPE html>
 
   /* event wiring */
   document.querySelectorAll('.btn-next').forEach(b=>b.addEventListener('click',e=>{ripple(b,e);api('next',b.dataset.office)}));
-  document.querySelectorAll('.btn-recall').forEach(b=>b.addEventListener('click',e=>{ripple(b,e);api('recall',b.dataset.office)}));
+  document.querySelectorAll('.btn-recall').forEach(b=>b.addEventListener('click',e=>{
+    ripple(b,e);announceRecall(b.dataset.office);api('recall',b.dataset.office);
+  }));
   document.querySelectorAll('.btn-priority').forEach(b=>b.addEventListener('click',e=>{ripple(b,e);api('priority',b.dataset.office)}));
   document.getElementById('resetBtn').addEventListener('click',()=>{
     showModal('Reset All Queues','Clear all ticket numbers and restart from zero? This cannot be undone.',()=>api('reset'));
@@ -1073,17 +1086,74 @@ DISPLAY_HTML = """<!DOCTYPE html>
     document.getElementById('dFootTime').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
   }
   clock();setInterval(clock,1000);
+
+  function ticketForSpeech(t){return t?t.split('').join(' '):''}
+  function buildAnnouncement(action,office,ticket){
+    const t=ticketForSpeech(ticket);
+    if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
+    if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
+    return`Number ${t}. Please proceed to the ${office} window.`;
+  }
+  function speak(text){
+    if(!window.speechSynthesis)return;
+    window.speechSynthesis.cancel();
+    const utt=new SpeechSynthesisUtterance(text);
+    utt.lang='en-US';utt.rate=0.88;utt.pitch=1.0;utt.volume=1.0;
+    function doSpeak(){
+      const voices=window.speechSynthesis.getVoices();
+      const pick=voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
+                ||voices.find(v=>/en/i.test(v.lang));
+      if(pick)utt.voice=pick;
+      window.speechSynthesis.speak(utt);
+    }
+    if(window.speechSynthesis.getVoices().length){doSpeak();}
+    else{window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});}
+  }
+  function playDing(){
+    try{
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      function tone(freq,start,dur,vol){
+        const osc=ctx.createOscillator(),g=ctx.createGain();
+        osc.connect(g);g.connect(ctx.destination);
+        osc.type='sine';osc.frequency.value=freq;
+        g.gain.setValueAtTime(0,ctx.currentTime+start);
+        g.gain.linearRampToValueAtTime(vol,ctx.currentTime+start+0.025);
+        g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+start+dur);
+        osc.start(ctx.currentTime+start);
+        osc.stop(ctx.currentTime+start+dur+0.05);
+      }
+      tone(880,0,1.4,0.55);tone(659,0.42,1.6,0.50);
+      setTimeout(()=>ctx.close(),2800);
+    }catch(e){}
+  }
+
+  let lastState={},lastRecall={};
   async function poll(){
     try{
       const r=await fetch('/api/state');const d=await r.json();
       if(!d.success)return;
+      const recall=d.recall||{};
       Object.keys(d.state).forEach(name=>{
         const el=document.getElementById('dn-'+name.replace(/ /g,'_'));
         if(!el)return;
-        if(el.textContent!==d.state[name]){
-          el.textContent=d.state[name]||'----';
+        const cur=d.state[name]||'----';
+        const prev=lastState[name];
+        if(el.textContent!==cur){
+          el.textContent=cur;
           el.classList.remove('change');void el.offsetWidth;el.classList.add('change');
+          if(cur&&cur!=='----'&&prev!==undefined){
+            playDing();
+            const action=cur.startsWith('P')?'priority':'next';
+            setTimeout(()=>speak(buildAnnouncement(action,name,cur)),680);
+          }
         }
+        const rc=recall[name]||0;
+        if(lastRecall[name]!==undefined&&rc>lastRecall[name]&&cur&&cur!=='----'){
+          playDing();
+          setTimeout(()=>speak(buildAnnouncement('recall',name,cur)),680);
+        }
+        lastRecall[name]=rc;
+        lastState[name]=cur;
       });
     }catch{}
   }
@@ -1270,7 +1340,7 @@ MONITOR_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,office,ticket){
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
-    if(action==='recall')return`Recalling for number ${t}, please proceed to the ${office.toLowerCase()} office.`;
+    if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${office} window.`;
   }
   function speak(text){
@@ -1858,7 +1928,7 @@ OFFICE_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,ticket){
     const t=ticketForSpeech(ticket);
     if(action===\'priority\')return`Priority number ${t}. Please proceed to the ${OFFICE} window.`;
-    if(action===\'recall\')return`Recalling for number ${t}, please proceed to the ${OFFICE.toLowerCase()} office.`;
+    if(action===\'recall\')return`Recalling for number ${t}. Please proceed to the ${OFFICE.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${OFFICE} window.`;
   }
 
@@ -1931,6 +2001,13 @@ OFFICE_HTML = """<!DOCTYPE html>
     try{const r=await fetch(\'/api/history\');const d=await r.json();if(d.success)renderHistory(d.history)}catch{}
   }
 
+  function announceRecall(){
+    const ticket=document.getElementById(\'curNum\').textContent.trim();
+    if(!ticket||ticket===\'----\'||!soundOn)return;
+    playDing();
+    setTimeout(()=>speak(buildAnnouncement(\'recall\',ticket)),680);
+  }
+
   /* ── API call ────────────────────────────────────────────────────────────── */
   async function api(action){
     try{
@@ -1943,9 +2020,11 @@ OFFICE_HTML = """<!DOCTYPE html>
         setNum(ticket);
         if(d.served)setServed(d.served[OFFICE]||0);
         showToast(d.message,\'success\');
-        if(ticket&&ticket!==\'----\'){
+        if(action===\'recall\'){
+          lastRecallCount=d.recall_count||lastRecallCount;
+        }else if(ticket&&ticket!==\'----\'){
           playDing();
-          const ann=action===\'priority\'?\'priority\':action===\'recall\'?\'recall\':\'next\';
+          const ann=action===\'priority\'?\'priority\':\'next\';
           setTimeout(()=>speak(buildAnnouncement(ann,ticket)),680);
         }
         loadHistory();
@@ -1979,7 +2058,7 @@ OFFICE_HTML = """<!DOCTYPE html>
 
   /* ── Button wiring ───────────────────────────────────────────────────────── */
   document.getElementById(\'btnNext\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'next\')});
-  document.getElementById(\'btnRecall\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'recall\')});
+  document.getElementById(\'btnRecall\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);announceRecall();api(\'recall\')});
   document.getElementById(\'btnPriority\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'priority\')});
 
   /* ── Init ────────────────────────────────────────────────────────────────── */
@@ -2106,7 +2185,7 @@ def login():
 
 @app.route('/api/state')
 def api_state():
-    return jsonify(success=True, state=snapshot(), served=served_map())
+    return jsonify(success=True, state=snapshot(), served=served_map(), recall=recall_map())
 
 @app.route('/api/monitor/<slug>')
 def api_monitor(slug):
@@ -2160,7 +2239,8 @@ def api_recall():
     msg = (f"Recalling for number {od['current']}, please proceed to the {office.lower()} office."
            if od['current'] != '----'
            else f"No current ticket to recall at {office}.")
-    return jsonify(success=True, message=msg, state=snapshot(), served=served_map())
+    return jsonify(success=True, message=msg, state=snapshot(), served=served_map(),
+                   recall_count=od.get('recall_count', 0))
 
 @app.route('/api/priority', methods=['POST'])
 def api_priority():
