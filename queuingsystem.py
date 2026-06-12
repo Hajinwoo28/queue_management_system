@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string, session, redirect
+from flask import Flask, request, jsonify, render_template_string, session, redirect, send_file
 from flask_cors import CORS
 from datetime import datetime
 import os
@@ -9,6 +9,7 @@ load_dotenv()  # loads .env from the project root
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get('SECRET_KEY', 'pgpc_qms_secret_8472')
+PGPC_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pgpc-logo.png')
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
@@ -1172,7 +1173,7 @@ MONITOR_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>{{ office }} Monitor — PGPC Queue</title>
-  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2..."/>
+  <link rel="icon" type="image/png" href="/logo.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Oxanium:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
@@ -2080,6 +2081,14 @@ OFFICE_HTML = """<!DOCTYPE html>
 @app.route('/')
 def index():
     return render_template_string(LOGIN_HTML)
+
+@app.route('/logo.png')
+def logo_png():
+    return send_file(PGPC_LOGO_PATH, mimetype='image/png')
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(PGPC_LOGO_PATH, mimetype='image/png')
 
 @app.route('/admin')
 def admin():
