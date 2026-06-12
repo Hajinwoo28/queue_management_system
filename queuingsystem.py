@@ -736,6 +736,7 @@ ADMIN_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,office,ticket){
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
+    if(action==='recall')return`Recalling for number ${t}, please proceed to the ${office.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${office} window.`;
   }
 
@@ -1269,6 +1270,7 @@ MONITOR_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,office,ticket){
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
+    if(action==='recall')return`Recalling for number ${t}, please proceed to the ${office.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${office} window.`;
   }
   function speak(text){
@@ -1341,8 +1343,7 @@ MONITOR_HTML = """<!DOCTYPE html>
         const cur=cEl.textContent;
         if(cur&&cur!=='----'){
           playDing();
-          const action=cur.startsWith('P')?'priority':'next';
-          setTimeout(()=>speak(buildAnnouncement(action,OFFICE,cur)),680);
+          setTimeout(()=>speak(buildAnnouncement('recall',OFFICE,cur)),680);
         }
       }
     }catch{}
@@ -1857,6 +1858,7 @@ OFFICE_HTML = """<!DOCTYPE html>
   function buildAnnouncement(action,ticket){
     const t=ticketForSpeech(ticket);
     if(action===\'priority\')return`Priority number ${t}. Please proceed to the ${OFFICE} window.`;
+    if(action===\'recall\')return`Recalling for number ${t}, please proceed to the ${OFFICE.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${OFFICE} window.`;
   }
 
@@ -1943,7 +1945,7 @@ OFFICE_HTML = """<!DOCTYPE html>
         showToast(d.message,\'success\');
         if(ticket&&ticket!==\'----\'){
           playDing();
-          const ann=(action===\'priority\')?action:\'next\';
+          const ann=action===\'priority\'?\'priority\':action===\'recall\'?\'recall\':\'next\';
           setTimeout(()=>speak(buildAnnouncement(ann,ticket)),680);
         }
         loadHistory();
@@ -1968,8 +1970,7 @@ OFFICE_HTML = """<!DOCTYPE html>
         const cur=d.current;
         if(cur&&cur!==\'----\'){
           playDing();
-          const a=cur.startsWith(\'P\')?\' priority\':\'next\';
-          setTimeout(()=>speak(buildAnnouncement(a,cur)),680);
+          setTimeout(()=>speak(buildAnnouncement(\'recall\',cur)),680);
         }
       }
     }catch{}
@@ -2156,7 +2157,7 @@ def api_recall():
     od = offices_data[office]
     od['recall_count'] = od.get('recall_count', 0) + 1
     push_history('recall', office, od['current'])
-    msg = (f"Recalling {od['current']} at {office}."
+    msg = (f"Recalling for number {od['current']}, please proceed to the {office.lower()} office."
            if od['current'] != '----'
            else f"No current ticket to recall at {office}.")
     return jsonify(success=True, message=msg, state=snapshot(), served=served_map())
