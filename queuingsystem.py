@@ -1344,21 +1344,47 @@ MONITOR_HTML = """<!DOCTYPE html>
     if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
     return`Number ${t}. Please proceed to the ${office} window.`;
   }
-  function speak(text){
-    if(!window.speechSynthesis)return;
-    window.speechSynthesis.cancel();
+  function pickVoice(){
+    const voices=window.speechSynthesis.getVoices();
+    return voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
+          ||voices.find(v=>/en/i.test(v.lang))||null;
+  }
+  function makeUtterance(text){
     const utt=new SpeechSynthesisUtterance(text);
     utt.lang='en-US';utt.rate=0.88;utt.pitch=1.0;utt.volume=1.0;
-    function doSpeak(){
-      const voices=window.speechSynthesis.getVoices();
-      const pick=voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
-                ||voices.find(v=>/en/i.test(v.lang));
-      if(pick)utt.voice=pick;
-      window.speechSynthesis.speak(utt);
-    }
-    if(window.speechSynthesis.getVoices().length){doSpeak();}
-    else{window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});}
+    const pick=pickVoice();
+    if(pick)utt.voice=pick;
+    return utt;
   }
+  function speak(text){
+    const synth=window.speechSynthesis;
+    if(!synth)return;
+    synth.cancel();
+    /* Speaking immediately after cancel() is unreliable on Chrome — the new
+       utterance can be silently dropped. A short delay lets the engine clear
+       first. Voice selection also happens at speak-time rather than waiting
+       on a one-shot 'voiceschanged' event, which (if it already fired for an
+       earlier announcement) would never fire again and leave this utterance
+       stuck forever — exactly the kind of silent failure that makes the
+       infrequent "Recall" announcement seem broken while "Next" still works. */
+    setTimeout(()=>{
+      const utt=makeUtterance(text);
+      utt.onerror=()=>{
+        synth.cancel();
+        setTimeout(()=>synth.speak(makeUtterance(text)),150);
+      };
+      synth.speak(utt);
+    },50);
+  }
+  /* Chrome lets the speech engine fall asleep/"stuck" after long gaps of
+     silence. "Next"/"Priority" announcements fire often enough to keep it
+     awake; "Recall" is sporadic and has no on-screen change, so a stuck
+     engine here goes completely unnoticed. A periodic pause/resume nudge
+     keeps the engine responsive for the next announcement. */
+  setInterval(()=>{
+    const synth=window.speechSynthesis;
+    if(synth){synth.pause();synth.resume();}
+  },10000);
   function playDing(){
     try{
       const ctx=new(window.AudioContext||window.webkitAudioContext)();
