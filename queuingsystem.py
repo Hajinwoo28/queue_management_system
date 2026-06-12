@@ -394,6 +394,8 @@ ADMIN_HTML = """<!DOCTYPE html>
     .btn-recall:hover{background:rgba(122,138,176,.18)}
     .btn-priority{background:rgba(245,166,35,.08);border-color:rgba(245,166,35,.22);color:var(--amber);font-size:.78rem}
     .btn-priority:hover{background:rgba(245,166,35,.16);box-shadow:0 4px 16px rgba(245,166,35,.12)}
+    .btn-prepare{background:rgba(0,200,150,.08);border-color:rgba(0,200,150,.22);color:#00c896;font-size:.78rem}
+    .btn-prepare:hover{background:rgba(0,200,150,.16);box-shadow:0 4px 16px rgba(0,200,150,.15)}
     /* ── Sidebar ── */
     .sidebar{display:flex;flex-direction:column;gap:14px}
     .panel{background:var(--glass);border:1px solid var(--gold-bd);
@@ -585,6 +587,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                 Priority Ticket
               </button>
+              <button class="btn-act btn-prepare btn-full" data-office="{{ office }}">
+                <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                Prepare Next
+              </button>
             </div>
           </div>
           {%- endfor %}
@@ -741,7 +747,8 @@ ADMIN_HTML = """<!DOCTYPE html>
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
     if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
-    return`Number ${t}. Please proceed to the ${office} window.`;
+    if(action==='prepare')return`Be ready for number ${t}. You are the next number to proceed to the ${office.toLowerCase()} office.`;
+    return`Number ${t}. Please proceed to the ${office} office.`;
   }
 
   /* sound + voice toggle */
@@ -895,6 +902,22 @@ ADMIN_HTML = """<!DOCTYPE html>
     ripple(b,e);announceRecall(b.dataset.office);api('recall',b.dataset.office);
   }));
   document.querySelectorAll('.btn-priority').forEach(b=>b.addEventListener('click',e=>{ripple(b,e);api('priority',b.dataset.office)}));
+  document.querySelectorAll('.btn-prepare').forEach(b=>b.addEventListener('click',async e=>{
+    ripple(b,e);
+    const office=b.dataset.office;
+    try{
+      const res=await fetch('/api/prepare-next',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({office})});
+      const d=await res.json();
+      if(d.success){
+        showToast(`Next up: ${d.next_ticket}  ·  ${office}`,'success');
+        if(soundOn&&d.next_ticket&&d.next_ticket!=='----'){
+          playDing();
+          setTimeout(()=>speak(buildAnnouncement('prepare',office,d.next_ticket)),680);
+        }
+      }else showToast(d.message||'Error.','error');
+    }catch{showToast('Connection error.','error')}
+  }));
   document.getElementById('resetBtn').addEventListener('click',()=>{
     showModal('Reset All Queues','Clear all ticket numbers and restart from zero? This cannot be undone.',()=>api('reset'));
   });
@@ -1060,7 +1083,7 @@ DISPLAY_HTML = """<!DOCTYPE html>
       <div class="q-oname">{{ office }}</div>
       <div class="q-serving">Now Serving</div>
       <div class="q-num" id="dn-{{ office | replace(' ','_') }}">{{ state.get(office,'----') }}</div>
-      <div class="q-hint">Please proceed to {{ office }} window</div>
+      <div class="q-hint">Please proceed to {{ office }} office</div>
     </div>
     {%- endfor %}
   </div>
@@ -1071,7 +1094,7 @@ DISPLAY_HTML = """<!DOCTYPE html>
       <span class="ticker-text">
         Welcome to Padre Garcia Polytechnic College &nbsp;&nbsp;•&nbsp;&nbsp;
         Please wait for your number to be called &nbsp;&nbsp;•&nbsp;&nbsp;
-        Proceed immediately to the designated window when your number appears &nbsp;&nbsp;•&nbsp;&nbsp;
+        Proceed immediately to the designated office when your number appears &nbsp;&nbsp;•&nbsp;&nbsp;
         Thank you for your patience and cooperation &nbsp;&nbsp;•&nbsp;&nbsp;
         For inquiries, please approach the Information Desk &nbsp;&nbsp;•&nbsp;&nbsp;
       </span>
@@ -1093,7 +1116,7 @@ DISPLAY_HTML = """<!DOCTYPE html>
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
     if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
-    return`Number ${t}. Please proceed to the ${office} window.`;
+    return`Number ${t}. Please proceed to the ${office} office.`;
   }
   function speak(text){
     if(!window.speechSynthesis)return;
@@ -1291,7 +1314,7 @@ MONITOR_HTML = """<!DOCTYPE html>
         <span class="m-ssub">Queue Management System &nbsp;·&nbsp; Batangas, Philippines</span>
       </div>
     </div>
-    <div class="m-office-badge">{{ office }} Window</div>
+    <div class="m-office-badge">{{ office }} Office</div>
     <div class="m-clock-area">
       <div id="mDate"></div>
       <div id="mTime"></div>
@@ -1302,7 +1325,7 @@ MONITOR_HTML = """<!DOCTYPE html>
     <div class="m-serving">
       <div class="m-s-label"><span>Now Serving</span></div>
       <div class="m-serving-num" id="mCurrent">{{ current }}</div>
-      <div class="m-hint"><span class="live-dot"></span>Please proceed to the {{ office }} window</div>
+      <div class="m-hint"><span class="live-dot"></span>Please proceed to the {{ office }} office</div>
     </div>
     <div class="m-divider"></div>
     <div class="m-next">
@@ -1318,7 +1341,7 @@ MONITOR_HTML = """<!DOCTYPE html>
       <span class="ticker-text">
         Welcome to Padre Garcia Polytechnic College &nbsp;&nbsp;&bull;&nbsp;&nbsp;
         Please wait for your number to be called &nbsp;&nbsp;&bull;&nbsp;&nbsp;
-        {{ office }}: proceed to window when your number appears &nbsp;&nbsp;&bull;&nbsp;&nbsp;
+        {{ office }}: proceed to office when your number appears &nbsp;&nbsp;&bull;&nbsp;&nbsp;
         Please have your documents and requirements ready &nbsp;&nbsp;&bull;&nbsp;&nbsp;
         Thank you for your patience and cooperation &nbsp;&nbsp;&bull;&nbsp;&nbsp;
       </span>
@@ -1342,7 +1365,7 @@ MONITOR_HTML = """<!DOCTYPE html>
     const t=ticketForSpeech(ticket);
     if(action==='priority')return`Priority number ${t}. Please proceed to ${office}.`;
     if(action==='recall')return`Recalling for number ${t}. Please proceed to the ${office.toLowerCase()} office.`;
-    return`Number ${t}. Please proceed to the ${office} window.`;
+    return`Number ${t}. Please proceed to the ${office} office.`;
   }
   function pickVoice(){
     const voices=window.speechSynthesis.getVoices();
@@ -1736,6 +1759,9 @@ OFFICE_HTML = """<!DOCTYPE html>
     .btn-priority{background:rgba(245,166,35,.08);border:1.5px solid rgba(245,166,35,.22);
       color:var(--amber);min-width:170px}
     .btn-priority:hover{background:rgba(245,166,35,.16);box-shadow:0 4px 16px rgba(245,166,35,.12);transform:translateY(-1px)}
+    .btn-prepare{background:rgba(0,200,150,.08);border:1.5px solid rgba(0,200,150,.22);
+      color:#00c896;min-width:160px}
+    .btn-prepare:hover{background:rgba(0,200,150,.16);box-shadow:0 4px 16px rgba(0,200,150,.15);transform:translateY(-1px)}
 
     /* ── Sidebar ── */
     .sidebar{display:flex;flex-direction:column;gap:14px}
@@ -1853,7 +1879,7 @@ OFFICE_HTML = """<!DOCTYPE html>
       <div class="hero-type" id="curType">Regular</div>
       <div class="hero-hint">
         <div class="live-dot"></div>
-        <span>{{ office }} window &nbsp;&middot;&nbsp; live</span>
+        <span>{{ office }} office &nbsp;&middot;&nbsp; live</span>
       </div>
       <div class="actions">
         <button class="btn-act btn-next" id="btnNext">
@@ -1866,6 +1892,10 @@ OFFICE_HTML = """<!DOCTYPE html>
         <button class="btn-act btn-priority" id="btnPriority">
           <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           Priority Ticket
+        </button>
+        <button class="btn-act btn-prepare" id="btnPrepare">
+          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Prepare Next
         </button>
       </div>
     </div>
@@ -1954,9 +1984,10 @@ OFFICE_HTML = """<!DOCTYPE html>
   function ticketForSpeech(t){return t?t.split(\'\').join(\' \'):'';}
   function buildAnnouncement(action,ticket){
     const t=ticketForSpeech(ticket);
-    if(action===\'priority\')return`Priority number ${t}. Please proceed to the ${OFFICE} window.`;
+    if(action===\'priority\')return`Priority number ${t}. Please proceed to the ${OFFICE} office.`;
     if(action===\'recall\')return`Recalling for number ${t}. Please proceed to the ${OFFICE.toLowerCase()} office.`;
-    return`Number ${t}. Please proceed to the ${OFFICE} window.`;
+    if(action===\'prepare\')return`Be ready for number ${t}. You are the next number to proceed to the ${OFFICE.toLowerCase()} office.`;
+    return`Number ${t}. Please proceed to the ${OFFICE} office.`;
   }
 
   /* ── Sound toggle ────────────────────────────────────────────────────────── */
@@ -2087,6 +2118,21 @@ OFFICE_HTML = """<!DOCTYPE html>
   document.getElementById(\'btnNext\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'next\')});
   document.getElementById(\'btnRecall\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);announceRecall();api(\'recall\')});
   document.getElementById(\'btnPriority\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'priority\')});
+  document.getElementById(\'btnPrepare\').addEventListener(\'click\',async e=>{
+    ripple(e.currentTarget,e);
+    try{
+      const res=await fetch(\'/api/prepare-next\',{method:\'POST\',
+        headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({office:OFFICE})});
+      const d=await res.json();
+      if(d.success){
+        showToast(`Next up: ${d.next_ticket}`,\'success\');
+        if(soundOn&&d.next_ticket&&d.next_ticket!==\'----\'){
+          playDing();
+          setTimeout(()=>speak(buildAnnouncement(\'prepare\',d.next_ticket)),680);
+        }
+      }else showToast(d.message||\'Error.\',\'error\');
+    }catch{showToast(\'Connection error.\',\'error\')}
+  });
 
   /* ── Init ────────────────────────────────────────────────────────────────── */
   (async()=>{
@@ -2276,6 +2322,18 @@ def api_recall():
            else f"No current ticket to recall at {office}.")
     return jsonify(success=True, message=msg, state=snapshot(), served=served_map(),
                    recall_count=od.get('recall_count', 0))
+
+@app.route('/api/prepare-next', methods=['POST'])
+def api_prepare_next():
+    data = request.get_json() or {}
+    office = data.get('office')
+    if office not in offices_data:
+        return jsonify(success=False, message='Invalid office.'), 400
+    nxt = next_ticket(office)
+    return jsonify(success=True,
+                   message=f"Heads-up announced for {nxt} at {office}.",
+                   next_ticket=nxt,
+                   office=office)
 
 @app.route('/api/priority', methods=['POST'])
 def api_priority():
