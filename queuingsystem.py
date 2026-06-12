@@ -902,21 +902,22 @@ ADMIN_HTML = """<!DOCTYPE html>
     ripple(b,e);announceRecall(b.dataset.office);api('recall',b.dataset.office);
   }));
   document.querySelectorAll('.btn-priority').forEach(b=>b.addEventListener('click',e=>{ripple(b,e);api('priority',b.dataset.office)}));
-  document.querySelectorAll('.btn-prepare').forEach(b=>b.addEventListener('click',async e=>{
+  document.querySelectorAll('.btn-prepare').forEach(b=>b.addEventListener('click',e=>{
     ripple(b,e);
     const office=b.dataset.office;
-    try{
-      const res=await fetch('/api/prepare-next',{method:'POST',
-        headers:{'Content-Type':'application/json'},body:JSON.stringify({office})});
-      const d=await res.json();
-      if(d.success){
-        showToast(`Next up: ${d.next_ticket}  ·  ${office}`,'success');
-        if(soundOn&&d.next_ticket&&d.next_ticket!=='----'){
-          playDing();
-          setTimeout(()=>speak(buildAnnouncement('prepare',office,d.next_ticket)),680);
-        }
-      }else showToast(d.message||'Error.','error');
-    }catch{showToast('Connection error.','error')}
+    // Compute next ticket synchronously from the live DOM value (kept current by updateUI).
+    const curEl=document.getElementById('tnum-'+sid(office));
+    const cur=(curEl?curEl.textContent.trim():'----');
+    let nxt;
+    if(!cur||cur==='----'){nxt=office[0].toUpperCase()+'001';}
+    else if(cur.startsWith('P')){nxt='P'+String(parseInt(cur.slice(1))+1).padStart(2,'0');}
+    else{const pfx=cur.match(/^[A-Z]+/)?.[0]||office[0].toUpperCase();nxt=pfx+String(parseInt(cur.slice(pfx.length))+1).padStart(3,'0');}
+    // Speak immediately — synchronous inside the user-gesture call stack.
+    showToast(`Announcing next: ${nxt}  ·  ${office}`,'success');
+    if(soundOn){
+      playDing();
+      setTimeout(()=>speak(buildAnnouncement('prepare',office,nxt)),680);
+    }
   }));
   document.getElementById('resetBtn').addEventListener('click',()=>{
     showModal('Reset All Queues','Clear all ticket numbers and restart from zero? This cannot be undone.',()=>api('reset'));
@@ -2118,20 +2119,19 @@ OFFICE_HTML = """<!DOCTYPE html>
   document.getElementById(\'btnNext\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'next\')});
   document.getElementById(\'btnRecall\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);announceRecall();api(\'recall\')});
   document.getElementById(\'btnPriority\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'priority\')});
-  document.getElementById(\'btnPrepare\').addEventListener(\'click\',async e=>{
+  document.getElementById(\'btnPrepare\').addEventListener(\'click\',e=>{
     ripple(e.currentTarget,e);
-    try{
-      const res=await fetch(\'/api/prepare-next\',{method:\'POST\',
-        headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({office:OFFICE})});
-      const d=await res.json();
-      if(d.success){
-        showToast(`Next up: ${d.next_ticket}`,\'success\');
-        if(soundOn&&d.next_ticket&&d.next_ticket!==\'----\'){
-          playDing();
-          setTimeout(()=>speak(buildAnnouncement(\'prepare\',d.next_ticket)),680);
-        }
-      }else showToast(d.message||\'Error.\',\'error\');
-    }catch{showToast(\'Connection error.\',\'error\')}
+    // Read next ticket directly from DOM — already kept current by polling.
+    // Speaking here is fully synchronous inside the user-gesture stack,
+    // so speechSynthesis is never blocked by browser autoplay policy.
+    const nxt=(document.getElementById(\'statNext\').textContent||\'\'). trim();
+    const ticket=(nxt&&nxt!==\'—\'&&nxt!==\'----\')?nxt:null;
+    if(!ticket){showToast(\'Next ticket not available\',\'warning\');return;}
+    showToast(`Announcing next: ${ticket}`,\'success\');
+    if(soundOn){
+      playDing();
+      setTimeout(()=>speak(buildAnnouncement(\'prepare\',ticket)),680);
+    }
   });
 
   /* ── Init ────────────────────────────────────────────────────────────────── */
