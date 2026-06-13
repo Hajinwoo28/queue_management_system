@@ -731,21 +731,28 @@ ADMIN_HTML = """<!DOCTYPE html>
   }
 
   // ── Web Speech API voice announcement ────────────────────────────────────────
+  function pickVoice(){
+    const v=window.speechSynthesis.getVoices();
+    return v.find(x=>/en.*(US|PH)/i.test(x.lang)&&/female|zira|samantha|karen|aria/i.test(x.name))
+          ||v.find(x=>/en/i.test(x.lang))||null;
+  }
+  function makeUtt(text){
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='en-US';u.rate=0.88;u.pitch=1.0;u.volume=1.0;
+    const p=pickVoice();if(p)u.voice=p;
+    return u;
+  }
   function speak(text){
     if(!soundOn||!window.speechSynthesis)return;
-    window.speechSynthesis.cancel();
-    const utt=new SpeechSynthesisUtterance(text);
-    utt.lang='en-US';utt.rate=0.88;utt.pitch=1.0;utt.volume=1.0;
-    function doSpeak(){
-      const voices=window.speechSynthesis.getVoices();
-      const pick=voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
-                ||voices.find(v=>/en/i.test(v.lang));
-      if(pick)utt.voice=pick;
-      window.speechSynthesis.speak(utt);
-    }
-    if(window.speechSynthesis.getVoices().length){doSpeak();}
-    else{window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});}
+    const synth=window.speechSynthesis;
+    synth.cancel();
+    setTimeout(()=>{
+      const u=makeUtt(text);
+      u.onerror=()=>{synth.cancel();setTimeout(()=>synth.speak(makeUtt(text)),150);};
+      synth.speak(u);
+    },50);
   }
+  setInterval(()=>{if(window.speechSynthesis){window.speechSynthesis.pause();window.speechSynthesis.resume();}},10000);
 
   // Spell out ticket e.g. "C002" → "C 0 0 2" for clear TTS pronunciation
   function ticketForSpeech(t){
@@ -1994,21 +2001,32 @@ OFFICE_HTML = """<!DOCTYPE html>
       tone(880,0,1.4,0.55);tone(659,0.42,1.6,0.50);
     }catch(e){}
   }
+  function pickVoice(){
+    const v=window.speechSynthesis.getVoices();
+    return v.find(x=>/en.*(US|PH)/i.test(x.lang)&&/female|zira|samantha|karen|aria/i.test(x.name))
+          ||v.find(x=>/en/i.test(x.lang))||null;
+  }
+  function makeUtt(text){
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=\'en-US\';u.rate=0.88;u.pitch=1.0;u.volume=1.0;
+    const p=pickVoice();if(p)u.voice=p;
+    return u;
+  }
   function speak(text){
     if(!soundOn||!window.speechSynthesis)return;
-    window.speechSynthesis.cancel();
-    const utt=new SpeechSynthesisUtterance(text);
-    utt.lang=\'en-US\';utt.rate=0.88;utt.pitch=1.0;utt.volume=1.0;
-    function doSpeak(){
-      const voices=window.speechSynthesis.getVoices();
-      const pick=voices.find(v=>/en.*(US|PH)/i.test(v.lang)&&/female|zira|samantha|karen|aria/i.test(v.name))
-                ||voices.find(v=>/en/i.test(v.lang));
-      if(pick)utt.voice=pick;
-      window.speechSynthesis.speak(utt);
-    }
-    if(window.speechSynthesis.getVoices().length){doSpeak();}
-    else{window.speechSynthesis.addEventListener(\'voiceschanged\',doSpeak,{once:true});}
+    const synth=window.speechSynthesis;
+    synth.cancel();
+    /* 50 ms gap: calling speak() right after cancel() silently drops the
+       utterance in Chrome. The delay lets the engine fully clear first.   */
+    setTimeout(()=>{
+      const u=makeUtt(text);
+      u.onerror=()=>{synth.cancel();setTimeout(()=>synth.speak(makeUtt(text)),150);};
+      synth.speak(u);
+    },50);
   }
+  /* Keep Chrome speech engine awake — it "sleeps" after long silences and
+     silently drops the next utterance. Nudge every 10 s to prevent this.  */
+  setInterval(()=>{if(window.speechSynthesis){window.speechSynthesis.pause();window.speechSynthesis.resume();}},10000);
   function ticketForSpeech(t){return t?t.split(\'\').join(\' \'):'';}
   function buildAnnouncement(action,ticket){
     const t=ticketForSpeech(ticket);
