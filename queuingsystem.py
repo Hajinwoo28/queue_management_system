@@ -2166,17 +2166,25 @@ OFFICE_HTML = """<!DOCTYPE html>
   document.getElementById(\'btnPriority\').addEventListener(\'click\',e=>{ripple(e.currentTarget,e);api(\'priority\')});
   document.getElementById(\'btnPrepare\').addEventListener(\'click\',e=>{
     ripple(e.currentTarget,e);
-    // Read next ticket directly from DOM — already kept current by polling.
-    // Speaking here is fully synchronous inside the user-gesture stack,
-    // so speechSynthesis is never blocked by browser autoplay policy.
-    const nxt=(document.getElementById(\'statNext\').textContent||\'\'). trim();
+    const nxt=(document.getElementById(\'statNext\').textContent||\'\').trim();
     const ticket=(nxt&&nxt!==\'—\'&&nxt!==\'----\')?nxt:null;
     if(!ticket){showToast(\'Next ticket not available\',\'warning\');return;}
-    showToast(`Announcing next: ${ticket}`,\'success\');
-    if(soundOn){
-      playDing();
-      setTimeout(()=>speak(buildAnnouncement(\'prepare\',ticket)),680);
-    }
+    showToast(`Announcing: ${ticket}`,\'success\');
+    if(!soundOn||!window.speechSynthesis)return;
+    // Unlock AudioContext for ding (safe to call inside a gesture)
+    try{getCtx();}catch(_){}
+    const synth=window.speechSynthesis;
+    const msg=buildAnnouncement(\'prepare\',ticket);
+    // synth.speak() is called SYNCHRONOUSLY here — directly inside the
+    // user-gesture call stack. Chrome always permits this regardless of
+    // whether TTS has ever been used on this page. Wrapping it in a
+    // setTimeout would cause Chrome to block it on first use (no prior unlock).
+    synth.cancel();
+    const u=makeUtt(msg);
+    u.onerror=()=>{synth.cancel();setTimeout(()=>synth.speak(makeUtt(msg)),100);};
+    synth.speak(u);
+    // Ding: AudioContext is a separate channel, plays 300 ms after speech queued
+    setTimeout(()=>playDing(),300);
   });
 
   /* ── Init ────────────────────────────────────────────────────────────────── */
