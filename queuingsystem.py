@@ -702,10 +702,19 @@ ADMIN_HTML = """<!DOCTYPE html>
   let soundOn=true,mCb=null;
 
   // ── Web Audio ding-dong chime (no MP3 file required) ─────────────────────────
+  /* ── Audio ─── shared context, unlocked on first user gesture ─────────── */
+  let _actx=null;
+  function getCtx(){
+    if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(_actx.state==='suspended')_actx.resume();
+    return _actx;
+  }
+  /* Any click on the page resumes the audio context */
+  document.addEventListener('click',()=>{try{if(_actx&&_actx.state==='suspended')_actx.resume();}catch(e){}},{capture:true});
   function playDing(){
     if(!soundOn)return;
     try{
-      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const ctx=getCtx();
       function tone(freq,start,dur,vol){
         const osc=ctx.createOscillator(),g=ctx.createGain();
         osc.connect(g);g.connect(ctx.destination);
@@ -718,7 +727,6 @@ ADMIN_HTML = """<!DOCTYPE html>
       }
       tone(880,0,1.4,0.55);    // ding — A5
       tone(659,0.42,1.6,0.50); // dong — E5
-      setTimeout(()=>ctx.close(),2800);
     }catch(e){}
   }
 
@@ -1134,9 +1142,17 @@ DISPLAY_HTML = """<!DOCTYPE html>
     if(window.speechSynthesis.getVoices().length){doSpeak();}
     else{window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});}
   }
+  /* ── Audio ─── shared context, unlocked on first user gesture ─────────── */
+  let _actx=null;
+  function getCtx(){
+    if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(_actx.state==='suspended')_actx.resume();
+    return _actx;
+  }
+  document.addEventListener('click',()=>{try{if(_actx&&_actx.state==='suspended')_actx.resume();}catch(e){}},{capture:true});
   function playDing(){
     try{
-      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const ctx=getCtx();
       function tone(freq,start,dur,vol){
         const osc=ctx.createOscillator(),g=ctx.createGain();
         osc.connect(g);g.connect(ctx.destination);
@@ -1148,11 +1164,8 @@ DISPLAY_HTML = """<!DOCTYPE html>
         osc.stop(ctx.currentTime+start+dur+0.05);
       }
       tone(880,0,1.4,0.55);tone(659,0.42,1.6,0.50);
-      setTimeout(()=>ctx.close(),2800);
     }catch(e){}
   }
-
-  let lastState={},lastRecall={};
   async function poll(){
     try{
       const r=await fetch('/api/state');const d=await r.json();
@@ -1409,9 +1422,17 @@ MONITOR_HTML = """<!DOCTYPE html>
     const synth=window.speechSynthesis;
     if(synth){synth.pause();synth.resume();}
   },10000);
+  /* ── Audio ─── shared context, unlocked on first user gesture ─────────── */
+  let _actx=null;
+  function getCtx(){
+    if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(_actx.state==='suspended')_actx.resume();
+    return _actx;
+  }
+  document.addEventListener('click',()=>{try{if(_actx&&_actx.state==='suspended')_actx.resume();}catch(e){}},{capture:true});
   function playDing(){
     try{
-      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const ctx=getCtx();
       function tone(freq,start,dur,vol){
         const osc=ctx.createOscillator(),g=ctx.createGain();
         osc.connect(g);g.connect(ctx.destination);
@@ -1424,7 +1445,6 @@ MONITOR_HTML = """<!DOCTYPE html>
       }
       tone(880,0,1.4,0.55);
       tone(659,0.42,1.6,0.50);
-      setTimeout(()=>ctx.close(),2800);
     }catch(e){}
   }
 
@@ -1951,10 +1971,18 @@ OFFICE_HTML = """<!DOCTYPE html>
   let soundOn=true;
 
   /* ── Audio & Speech ─────────────────────────────────────────────────────── */
+  /* ── Audio ─── shared context, unlocked on first user gesture ─────────── */
+  let _actx=null;
+  function getCtx(){
+    if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)();
+    if(_actx.state===\'suspended\')_actx.resume();
+    return _actx;
+  }
+  document.addEventListener(\'click\',()=>{try{if(_actx&&_actx.state===\'suspended\')_actx.resume();}catch(e){}},{capture:true});
   function playDing(){
     if(!soundOn)return;
     try{
-      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const ctx=getCtx();
       function tone(f,s,d,v){
         const o=ctx.createOscillator(),g=ctx.createGain();
         o.connect(g);g.connect(ctx.destination);o.type=\'sine\';o.frequency.value=f;
@@ -1964,7 +1992,6 @@ OFFICE_HTML = """<!DOCTYPE html>
         o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d+0.05);
       }
       tone(880,0,1.4,0.55);tone(659,0.42,1.6,0.50);
-      setTimeout(()=>ctx.close(),2800);
     }catch(e){}
   }
   function speak(text){
